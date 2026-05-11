@@ -102,34 +102,37 @@ function detectUpwardSwipe() {
     return;
   }
 
-  // 必須同時偵測到手和臉
-  if (handDetections.length > 0 && faceDetections.length > 0) {
-    const wrist = handDetections[0].landmarks[0]; // 手腕座標
-    const faceBox = faceDetections[0].detection.box; // 臉部邊界框
+  // 只有在偵測到手時，才進行揮手偵測的邏輯
+  if (handDetections.length > 0) {
+    const wrist = handDetections[0].landmarks[0];
 
-    // 1. 偵測手是否進入螢幕下方的「起始區」
-    //    如果手在螢幕下方 75% 的位置，且我們還沒開始追蹤手勢，就記錄起始位置
-    if (wrist[1] > capture.height * 0.75 && handStartPos === null) {
-      handStartPos = { x: wrist[0], y: wrist[1] };
+    // 1. 如果揮手手勢尚未開始，檢查手是否在起始區域
+    if (handStartPos === null) {
+      if (wrist[1] > capture.height * 0.75) {
+        handStartPos = { x: wrist[0], y: wrist[1] };
+      }
     }
+    // 2. 如果手勢已經開始，則檢查是否完成或取消
+    else {
+      const yMovement = handStartPos.y - wrist[1];
+      const xPos = wrist[0];
 
-    // 2. 如果已經記錄了起始位置，就檢查手是否向上揮過臉部
-    if (handStartPos !== null) {
-      const yMovement = handStartPos.y - wrist[1]; // y座標的移動量，正值代表向上
-      const xPos = wrist[0]; // 目前手的 x 座標
-
-      // 檢查條件：(1)向上移動超過螢幕高度的40% (2)手目前在螢幕上半部 (3)手的x座標在臉的範圍內
-      if (yMovement > capture.height * 0.4 && wrist[1] < capture.height * 0.5 &&
-          xPos > faceBox.x && xPos < faceBox.x + faceBox.width) {
-        // 觸發面具更換
-        currentMaskIndex = (currentMaskIndex + 1) % maskImages.length;
-        // 重置手勢狀態並啟動冷卻
+      // 檢查是否滿足揮手完成的條件 (同時也需要偵測到臉)
+      if (yMovement > capture.height * 0.4 && wrist[1] < capture.height * 0.5 && faceDetections.length > 0) {
+        const faceBox = faceDetections[0].detection.box;
+        if (xPos > faceBox.x && xPos < faceBox.x + faceBox.width) {
+          currentMaskIndex = (currentMaskIndex + 1) % maskImages.length;
+          handStartPos = null; // 重置手勢
+          swipeCooldown = 30; // 啟動冷卻
+        }
+      } 
+      // 如果手移回起始點下方，取消此次揮手偵測
+      else if (wrist[1] > handStartPos.y) {
         handStartPos = null;
-        swipeCooldown = 30; // 30幀的冷卻時間，約0.5秒
       }
     }
   } else {
-    // 如果沒偵測到手，就重置狀態
+    // 如果完全沒有偵測到手，重置狀態
     handStartPos = null;
   }
 }
@@ -196,12 +199,15 @@ function draw() {
 
   // 根據手勢更新要顯示的耳環
   const fingerCount = countFingers();
-  if (fingerCount > 0 && fingerCount <= 5) {
-    // 陣列索引是 0 到 4，所以要減 1
-    currentEarringIndex = fingerCount - 1;
-  } else {
-    // 如果不是 1-5 的手勢，就不顯示耳環
-    currentEarringIndex = -1;
+  // 只有在偵測到手時才更新耳環狀態，避免因為暫時沒偵測到手而閃爍
+  if (handDetections.length > 0) {
+    if (fingerCount > 0 && fingerCount <= 5) {
+      // 陣列索引是 0 到 4，所以要減 1
+      currentEarringIndex = fingerCount - 1;
+    } else {
+      // 如果手勢不是 1-5，就不顯示耳環
+      currentEarringIndex = -1;
+    }
   }
 
   // 在耳垂上繪製耳環
