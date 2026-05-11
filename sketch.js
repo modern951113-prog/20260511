@@ -125,17 +125,28 @@ function countFingers() {
   if (handDetections.length > 0) {
     // 取得第一隻偵測到的手的標記點
     const landmarks = handDetections[0].landmarks;
-    const tipIds = [4, 8, 12, 16, 20]; // 指尖的索引
-    const dipIds = [3, 7, 11, 15, 19]; // 指尖下面一個關節的索引
+    const tipIds = [4, 8, 12, 16, 20]; // 指尖的索引 (Thumb, Index, Middle, Ring, Pinky)
+    const pipIds = [2, 6, 10, 14, 18]; // PIP 關節的索引 (指尖下面第二個關節)
 
-    // 檢查四隻手指 (食指到小指) 是否伸直 (指尖 y 座標小於關節 y 座標)
+    // --- 偵測是左手還是右手 (簡化版) ---
+    // 比較手腕和中指根部的x座標。這是一個簡化的判斷，在某些手部角度下可能不準確。
+    // 在原始（未鏡像）視訊中，右手的x座標通常比左手大。
+    // 手腕(0) x > 中指根部(9) x  => 左手
+    const isLeftHand = landmarks[0][0] > landmarks[9][0];
+
+    // --- 檢查四隻手指 (食指到小指) ---
+    // 檢查指尖的y座標是否比第二個關節(PIP)的y座標更「上面」(y值更小)
     for (let i = 1; i < 5; i++) {
-      if (landmarks[tipIds[i]][1] < landmarks[dipIds[i]][1]) {
+      if (landmarks[tipIds[i]][1] < landmarks[pipIds[i]][1]) {
         fingerCount++;
       }
     }
-    // 檢查大拇指是否伸直 (指尖 x 座標大於關節 x 座標，因為影像是左右顛倒的)
-    if (landmarks[tipIds[0]][0] > landmarks[dipIds[0]][0]) {
+
+    // --- 檢查大拇指 (更穩定的版本) ---
+    // 根據左/右手，檢查大拇指指尖相對於其根部關節的x座標
+    // 左手：指尖x > 關節x  /  右手：指尖x < 關節x
+    if ((isLeftHand && landmarks[tipIds[0]][0] > landmarks[pipIds[0]][0]) ||
+        (!isLeftHand && landmarks[tipIds[0]][0] < landmarks[pipIds[0]][0])) {
       fingerCount++;
     }
   }
