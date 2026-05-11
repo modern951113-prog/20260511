@@ -15,8 +15,9 @@ let currentMaskIndex = 0;
 // 用來儲存辨識結果的變數
 let faceDetections = [];
 let handDetections = [];
-// 用來偵測手部揮動的變數
-let lastHandSide = null;
+// 用來偵測手部向上揮動的變數
+let handStartPos = null; // 儲存揮動手勢的起始位置
+let swipeCooldown = 0;   // 用來避免手勢重複觸發的冷卻計時器
 
 // ml5.js 的臉部辨識模型選項
 const faceOptions = {
@@ -94,28 +95,42 @@ function gotHandResults(results) {
 }
 
 // 偵測手部揮動的函式
-function detectWave() {
-  // 檢查是否有偵測到手
-  if (handDetections.length > 0) {
-    const wrist = handDetections[0].landmarks[0];
-    const centerX = capture.width / 2;
-    const currentHandSide = wrist[0] < centerX ? 'left' : 'right';
+function detectUpwardSwipe() {
+  // 冷卻計時器，防止手勢在短時間內重複觸發
+  if (swipeCooldown > 0) {
+    swipeCooldown--;
+    return;
+  }
 
-    // 如果手剛進入畫面，記錄它的位置
-    if (lastHandSide === null) {
-      lastHandSide = currentHandSide;
+  // 必須同時偵測到手和臉
+  if (handDetections.length > 0 && faceDetections.length > 0) {
+    const wrist = handDetections[0].landmarks[0]; // 手腕座標
+    const faceBox = faceDetections[0].detection.box; // 臉部邊界框
+
+    // 1. 偵測手是否進入螢幕下方的「起始區」
+    //    如果手在螢幕下方 75% 的位置，且我們還沒開始追蹤手勢，就記錄起始位置
+    if (wrist[1] > capture.height * 0.75 && handStartPos === null) {
+      handStartPos = { x: wrist[0], y: wrist[1] };
     }
-    // 如果手從一邊移動到另一邊，就當作一次揮動 (使用 else if 避免第一幀就觸發)
-    else if (lastHandSide !== currentHandSide) {
-      // 切換到下一個面具，如果到最後一個就循環回第一個
-      currentMaskIndex = (currentMaskIndex + 1) % maskImages.length;
-      // 重置狀態，這樣手需要回到原本那側再揮過來才會觸發下一次
-      // 這可以避免手在中間小範圍移動時，面具快速切換
-      lastHandSide = null;
+
+    // 2. 如果已經記錄了起始位置，就檢查手是否向上揮過臉部
+    if (handStartPos !== null) {
+      const yMovement = handStartPos.y - wrist[1]; // y座標的移動量，正值代表向上
+      const xPos = wrist[0]; // 目前手的 x 座標
+
+      // 檢查條件：(1)向上移動超過螢幕高度的40% (2)手目前在螢幕上半部 (3)手的x座標在臉的範圍內
+      if (yMovement > capture.height * 0.4 && wrist[1] < capture.height * 0.5 &&
+          xPos > faceBox.x && xPos < faceBox.x + faceBox.width) {
+        // 觸發面具更換
+        currentMaskIndex = (currentMaskIndex + 1) % maskImages.length;
+        // 重置手勢狀態並啟動冷卻
+        handStartPos = null;
+        swipeCooldown = 30; // 30幀的冷卻時間，約0.5秒
+      }
     }
   } else {
     // 如果沒偵測到手，就重置狀態
-    lastHandSide = null;
+    handStartPos = null;
   }
 }
 
@@ -177,7 +192,7 @@ function draw() {
   image(capture, 0, 0, videoWidth, videoHeight);
 
   // 偵測手部揮動來切換面具
-  detectWave();
+  detectUpwardSwipe();
 
   // 根據手勢更新要顯示的耳環
   const fingerCount = countFingers();
@@ -263,6 +278,12 @@ function drawEarrings(videoWidth, videoHeight) {
       let y1 = (leftEarlobe._y / capture.height - 0.5) * videoHeight;
       let x2 = (rightEarlobe._x / capture.width - 0.5) * videoWidth;
       let y2 = (rightEarlobe._y / capture.height - 0.5) * videoHeight;
+
+      // --- 新增位移，讓耳環向外移動 ---
+      // 您可以調整 15 這個數字來改變耳環向外移動的距離
+      const offset = 15;
+      x1 -= offset; // 將左耳環向外側移動
+      x2 += offset; // 將右耳環向外側移動
 
       // 從陣列中取得要繪製的耳環圖片
       const imgToDraw = earringImages[currentEarringIndex];
