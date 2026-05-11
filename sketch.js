@@ -15,11 +15,6 @@ let currentMaskIndex = 0;
 // 用來儲存辨識結果的變數
 let faceDetections = [];
 let handDetections = [];
-// 用來偵測手部向上揮動的變數
-let handStartPos = null; // 儲存揮動手勢的起始位置
-let swipeCooldown = 0;   // 用來避免手勢重複觸發的冷卻計時器
-
-// ml5.js 的臉部辨識模型選項
 const faceOptions = {
   withLandmarks: true, // 取得臉部特徵點
   withDescriptors: false, // 我們不需要臉部描述
@@ -94,49 +89,6 @@ function gotHandResults(results) {
   handDetections = results;
 }
 
-// 偵測手部揮動的函式
-function detectUpwardSwipe() {
-  // 冷卻計時器，防止手勢在短時間內重複觸發
-  if (swipeCooldown > 0) {
-    swipeCooldown--;
-    return;
-  }
-
-  // 只有在偵測到手時，才進行揮手偵測的邏輯
-  if (handDetections.length > 0) {
-    const wrist = handDetections[0].landmarks[0];
-
-    // 1. 如果揮手手勢尚未開始，檢查手是否在起始區域
-    if (handStartPos === null) {
-      if (wrist[1] > capture.height * 0.75) {
-        handStartPos = { x: wrist[0], y: wrist[1] };
-      }
-    }
-    // 2. 如果手勢已經開始，則檢查是否完成或取消
-    else {
-      const yMovement = handStartPos.y - wrist[1];
-      const xPos = wrist[0];
-
-      // 檢查是否滿足揮手完成的條件 (同時也需要偵測到臉)
-      if (yMovement > capture.height * 0.4 && wrist[1] < capture.height * 0.5 && faceDetections.length > 0) {
-        const faceBox = faceDetections[0].detection.box;
-        if (xPos > faceBox.x && xPos < faceBox.x + faceBox.width) {
-          currentMaskIndex = (currentMaskIndex + 1) % maskImages.length;
-          handStartPos = null; // 重置手勢
-          swipeCooldown = 30; // 啟動冷卻
-        }
-      } 
-      // 如果手移回起始點下方，取消此次揮手偵測
-      else if (wrist[1] > handStartPos.y) {
-        handStartPos = null;
-      }
-    }
-  } else {
-    // 如果完全沒有偵測到手，重置狀態
-    handStartPos = null;
-  }
-}
-
 // 計算伸出的手指數量
 function countFingers() {
   let fingerCount = 0;
@@ -193,9 +145,6 @@ function draw() {
   // 在新的座標系統 (中心、已反轉) 的原點 (0, 0) 繪製影像
   // 因為我們已經用了 translate 和 imageMode(CENTER)，影像會被精準地放在畫布正中央
   image(capture, 0, 0, videoWidth, videoHeight);
-
-  // 偵測手部揮動來切換面具
-  detectUpwardSwipe();
 
   // 根據手勢更新要顯示的耳環
   const fingerCount = countFingers();
@@ -301,6 +250,12 @@ function drawEarrings(videoWidth, videoHeight) {
       image(imgToDraw, x2, y2, 40, 40);
     }
   }
+}
+
+// 當螢幕被觸碰或滑鼠被點擊時，更換面具
+function mousePressed() {
+  // 切換到下一個面具，如果到最後一個就循環回第一個
+  currentMaskIndex = (currentMaskIndex + 1) % maskImages.length;
 }
 
 // 這個函式會在瀏覽器視窗大小改變時自動被呼叫
