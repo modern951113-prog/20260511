@@ -95,7 +95,7 @@ function gotHandResults(results) {
 
 // 偵測手部揮動的函式
 function detectWave() {
-  // 檢查是否有偵測到任何手
+  // 檢查是否有偵測到手
   if (handDetections.length > 0) {
     // 使用手腕 (landmarks[0]) 作為手的位置參考
     const wrist = handDetections[0].landmarks[0];
@@ -103,18 +103,16 @@ function detectWave() {
     // 判斷手在畫面的左邊還是右邊
     const currentHandSide = wrist[0] < centerX ? 'left' : 'right';
 
+    // 如果手剛進入畫面，記錄它的位置
+    if (lastHandSide === null) {
+      lastHandSide = currentHandSide;
+    }
     // 如果手從一邊移動到另一邊，就當作一次揮動
-    // 這裡的 lastHandSide !== currentHandSide 是關鍵，
-    // 它確保只有在手跨越中心線時才觸發一次。
     if (lastHandSide && lastHandSide !== currentHandSide) {
       // 切換到下一個面具，如果到最後一個就循環回第一個
       currentMaskIndex = (currentMaskIndex + 1) % maskImages.length;
-      // 將 lastHandSide 設為 null，這樣手需要再次從一側進入才會被記錄，
-      // 避免在中心點附近快速來回移動時重複觸發。
-      lastHandSide = null;
-    }
-    // 如果 lastHandSide 是 null，表示這是一個新的揮手動作的開始
-    else if (lastHandSide === null) {
+      // 更新手的位置，這樣就不會因為手在中心點附近抖動而重複觸發
+      // 一次完整的揮動（例如從左到右再回到左）會觸發兩次切換
       lastHandSide = currentHandSide;
     }
   } else {
